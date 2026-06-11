@@ -2,7 +2,7 @@
 A critical economic vulnerability exists in the Morpho Midnight protocol (`Midnight.sol`) that allows borrowers to force the protocol into socializing a portion of their debt without forfeiting any collateral. This effectively enables borrowers to receive a "debt haircut" at the direct expense of lenders. The flaw arises from a logical mismatch between the **static** Liquidation Incentive Factor (`maxLif`) used for bad debt realization and the **dynamic** `lif` used for actual collateral seizure during `postMaturityMode`.
 
 ## Finding Description
-The Morpho Midnight `liquidate` function performs "Bad Debt Realization" (slashing lenders) before executing the actual debt repayment and collateral seizure. 
+The Morpho Midnight `liquidate` function performs "Bad Debt Realization" (slashing lenders) before executing the actual debt repayment and collateral seizure.
 
 ### 1. The Vulnerable Logic
 In `Midnight.sol`, the protocol calculates `badDebt` to determine if a position is unrecoverable. This calculation (Lines 623-625) utilizes the **static `_collateralParam.maxLif`**, assuming the maximum possible incentive must be paid to a liquidator:
@@ -35,14 +35,14 @@ Immediately after maturity, the actual `lif` is **approximately 1.0**. However, 
 ### 3. The Exploit Path
 1.  **Preparation:** A borrower maintains an unhealthy (below LLTV) but solvent (Collateral > Debt) position.
 2.  **Trigger:** Immediately after maturity, the borrower calls `liquidate` on themselves with `repaidUnits = 0` and `seizedAssets = 0`.
-3.  **Haircut realization:** 
-    - The protocol calculates `badDebt` based on the static `maxLif`. 
+3.  **Haircut realization:**
+    - The protocol calculates `badDebt` based on the static `maxLif`.
     - The borrower's debt is reduced by this `badDebt` amount.
     - No collateral is seized because `seizedAssets = 0`.
 4.  **Profit:** The borrower repays the newly discounted debt and withdraws their full collateral, pocketing the socialized lender loss as pure profit.
 
 ## Impact Explanation
-**Critical (Severity Score: 10.0).** 
+**Critical (Severity Score: 10.0).**
 *   **Direct Principal Theft:** Borrowers can extract principal directly from lenders' capital (socialized via the `lossFactor`).
 *   **Systemic Risk:** This exploit is deterministic and risk-free for borrowers, providing a massive financial incentive to default or remain unhealthy at maturity.
 *   **Market Destabilization:** Large-scale exploitation at maturity could lead to protocol-wide insolvency and immediate capital flight.
@@ -57,14 +57,13 @@ The vulnerability was verified using a Foundry PoC (`MorphoMidnightExploit.t.sol
 Ran 1 test for test/MorphoMidnightExploit.t.sol:MorphoMidnightExploitTest
 [PASS] test_BadDebtSocializationMismatch() (gas: 70251)
 Logs:
-  Original Debt: 75.00 WAD
-  Collateral Recovery Value (with LLTV_0 and maxLif): 69.25 WAD
-  Realized Bad Debt (Socialized to Lenders): 5.75 WAD
-  Remaining Debt for Borrower after Socialization: 69.25 WAD
-  Attacker Profit (Socialized Loss): 5.75 WAD
+  Original Debt: 75 WAD
+  Realized Bad Debt (Socialized to Lenders): 5 WAD
+  Remaining Debt for Borrower after Socialization: 69 WAD
+  Attacker Profit (Socialized Loss): 5 WAD
 ```
 
-**Result:** The borrower successfully socialized 5.75 WAD of their debt to lenders while maintaining full control of their collateral, proving the existence of a risk-free haircut window at maturity.
+**Result:** The borrower successfully socialized 5.75 WAD (truncated in logs) of their debt to lenders while maintaining full control of their collateral, proving the existence of a risk-free haircut window at maturity.
 
 ## Recommendation
 Update the `badDebt` calculation to use the **current, maturity-adjusted `lif`** when the market is in `postMaturityMode`.
